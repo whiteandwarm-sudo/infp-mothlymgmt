@@ -1,9 +1,11 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>拾光長箋</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -12,6 +14,7 @@
             font-family: 'Inter', sans-serif;
             -webkit-tap-highlight-color: transparent;
             overscroll-behavior: none;
+            background-color: #F8F7F4;
         }
         .hide-scrollbar::-webkit-scrollbar {
             display: none;
@@ -20,7 +23,7 @@
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
-        /* Custom iPad Landscape Styling */
+        /* iPad 橫屏適配優化 */
         @media (orientation: landscape) {
             .app-container {
                 height: 100vh;
@@ -40,5 +43,7 @@
 </head>
 <body class="bg-[#F8F7F4] text-[#4A4A4A]">
     <div id="root"></div>
+    <!-- 這裡需要顯式引入 index.tsx 作為入口 -->
+    <script type="module" src="./index.tsx"></script>
 </body>
 </html>

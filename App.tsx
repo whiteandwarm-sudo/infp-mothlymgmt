@@ -19,7 +19,7 @@ const App: React.FC = () => {
     return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
   });
 
-  // 初始化時加載數據
+  // 1. 初始化加載
   useEffect(() => {
     const savedProjects = localStorage.getItem('mm_projects');
     const savedEntries = localStorage.getItem('mm_entries');
@@ -34,14 +34,13 @@ const App: React.FC = () => {
         { id: '3', name: '美學構築', color: MORANDI_PALETTE[2], slot: 2, isFinished: false },
       ];
       setProjects(defaults);
-      localStorage.setItem('mm_projects', JSON.stringify(defaults));
     }
 
     if (savedEntries) setEntries(JSON.parse(savedEntries));
     if (savedInspirations) setInspirations(JSON.parse(savedInspirations));
   }, []);
 
-  // 數據變動時自動保存
+  // 2. 自動保存
   useEffect(() => {
     if (projects.length > 0) localStorage.setItem('mm_projects', JSON.stringify(projects));
   }, [projects]);
@@ -54,59 +53,45 @@ const App: React.FC = () => {
     localStorage.setItem('mm_inspirations', JSON.stringify(inspirations));
   }, [inspirations]);
 
-  // 導出 JSON 文件
+  // 3. 數據備份與恢復
   const exportData = () => {
     const data = {
       projects,
       entries,
       inspirations,
-      exportedAt: new Date().toISOString(),
-      version: '1.0'
+      timestamp: new Date().toISOString()
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    const dateStr = new Date().toISOString().split('T')[0];
     link.href = url;
-    link.download = `拾光長箋_備份_${dateStr}.json`;
-    document.body.appendChild(link);
+    link.download = `拾光長箋_備份_${new Date().toISOString().split('T')[0]}.json`;
     link.click();
-    document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
-  // 導入 JSON 文件
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const importData = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = (event) => {
       try {
-        const content = e.target?.result as string;
-        const data = JSON.parse(content);
-        
-        if (data.projects && data.entries && data.inspirations) {
-          if (window.confirm('導入備份將會覆蓋當前數據，確定要繼續嗎？')) {
-            setProjects(data.projects);
-            setEntries(data.entries);
-            setInspirations(data.inspirations);
-            alert('時光已重塑，數據恢復成功。');
+        const json = JSON.parse(event.target?.result as string);
+        if (json.projects && json.entries && json.inspirations) {
+          if (confirm('導入將覆蓋現有所有數據，確定嗎？')) {
+            setProjects(json.projects);
+            setEntries(json.entries);
+            setInspirations(json.inspirations);
+            alert('數據恢復成功');
           }
-        } else {
-          alert('文件格式似乎不正確，請確保這是由本應用導出的備份文件。');
         }
       } catch (err) {
-        alert('解析文件失敗。');
+        alert('無效的備份文件');
       }
     };
     reader.readAsText(file);
-    // 重置 input 以便下次選擇同一文件
-    event.target.value = '';
+    e.target.value = '';
   };
 
   const addEntry = (entry: Omit<Entry, 'id'>) => {
@@ -146,7 +131,7 @@ const App: React.FC = () => {
   };
 
   const deleteProject = (id: string) => {
-    if (window.confirm('確定要告別這個項目嗎？過往的塵埃亦將隨之散去。')) {
+    if (confirm('確定刪除項目？相關印記將轉為未歸類。')) {
       setProjects(prev => prev.filter(p => p.id !== id));
     }
   };
@@ -154,25 +139,22 @@ const App: React.FC = () => {
   const reorderProjects = (draggedId: string, targetId: string) => {
     setProjects(prev => {
       const newProjects = [...prev];
-      const draggedIndex = newProjects.findIndex(p => p.id === draggedId);
-      const targetIndex = newProjects.findIndex(p => p.id === targetId);
-      if (draggedIndex === -1 || targetIndex === -1) return prev;
-      
-      const [removed] = newProjects.splice(draggedIndex, 1);
-      newProjects.splice(targetIndex, 0, removed);
+      const fromIdx = newProjects.findIndex(p => p.id === draggedId);
+      const toIdx = newProjects.findIndex(p => p.id === targetId);
+      const [removed] = newProjects.splice(fromIdx, 1);
+      newProjects.splice(toIdx, 0, removed);
       return newProjects.map((p, i) => ({ ...p, slot: i }));
     });
   };
 
-  const addNewProject = (name: string = '新啟程') => {
-    const activeCount = projects.filter(p => !p.isFinished).length;
-    if (activeCount >= 9) {
-      alert("生命有限，九種可能已是極致。請先圓滿舊的章節。");
+  const addNewProject = () => {
+    if (projects.filter(p => !p.isFinished).length >= 9) {
+      alert("生命有限，九種可能已是極致。");
       return;
     }
     const newProject: Project = {
       id: crypto.randomUUID(),
-      name,
+      name: '新修行',
       color: MORANDI_PALETTE[projects.length % MORANDI_PALETTE.length],
       slot: projects.length,
       isFinished: false
@@ -180,197 +162,89 @@ const App: React.FC = () => {
     setProjects(prev => [...prev, newProject]);
   };
 
-  const visibleProjects = useMemo(() => {
-    return projects.filter(p => {
-      if (viewingMonth === 'ALL') return true;
-      const hasEntriesThisMonth = entries.some(e => e.projectId === p.id && e.date.startsWith(viewingMonth));
-      return !p.isFinished || hasEntriesThisMonth;
-    });
-  }, [projects, entries, viewingMonth]);
-
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
     const now = new Date();
     months.add(`${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`);
-    
-    entries.forEach(e => {
-      const m = e.date.substring(0, 7);
-      months.add(m);
-    });
-    
-    const sorted = Array.from(months).sort().reverse();
-    return ['ALL', ...sorted];
+    entries.forEach(e => months.add(e.date.substring(0, 7)));
+    return ['ALL', ...Array.from(months).sort().reverse()];
   }, [entries]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#F8F7F4] select-none">
-      <nav className="w-20 bg-white border-r border-[#EBE8E2] flex flex-col items-center py-8 gap-10">
+      <nav className="w-20 bg-white border-r border-[#EBE8E2] flex flex-col items-center py-8 gap-10 shrink-0">
         <div className="w-12 h-12 flex items-center justify-center text-[#9D8189]">
           <Rabbit size={32} strokeWidth={1.5} />
         </div>
         
         <div className="flex flex-col gap-6">
-          <NavButton 
-            active={activeView === 'MATRIX'} 
-            onClick={() => setActiveView('MATRIX')}
-            icon={<LayoutGrid size={22} />} 
-          />
-          <NavButton 
-            active={activeView === 'BRAINSTORM'} 
-            onClick={() => setActiveView('BRAINSTORM')}
-            icon={<Lightbulb size={22} />} 
-          />
-          <NavButton 
-            active={activeView === 'DASHBOARD'} 
-            onClick={() => setActiveView('DASHBOARD')}
-            icon={<BarChart3 size={22} />} 
-          />
+          <NavButton active={activeView === 'MATRIX'} onClick={() => setActiveView('MATRIX')} icon={<LayoutGrid size={22} />} />
+          <NavButton active={activeView === 'BRAINSTORM'} onClick={() => setActiveView('BRAINSTORM')} icon={<Lightbulb size={22} />} />
+          <NavButton active={activeView === 'DASHBOARD'} onClick={() => setActiveView('DASHBOARD')} icon={<BarChart3 size={22} />} />
         </div>
 
         <div className="mt-auto">
-          <NavButton 
-            active={isProjectSettingsOpen}
-            onClick={() => setIsProjectSettingsOpen(!isProjectSettingsOpen)}
-            icon={<Settings2 size={22} />} 
-          />
+          <NavButton active={isProjectSettingsOpen} onClick={() => setIsProjectSettingsOpen(true)} icon={<Settings2 size={22} />} />
         </div>
       </nav>
 
       <main className="flex-1 overflow-hidden relative">
         {activeView === 'MATRIX' && (
           <MonthlyMatrix 
-            viewingMonth={viewingMonth}
-            availableMonths={availableMonths}
-            onMonthChange={setViewingMonth}
-            projects={visibleProjects} 
-            entries={entries} 
-            onAddEntry={addEntry} 
-            onUpdateEntry={updateEntry}
-            onDeleteEntry={deleteEntry}
-            onUpdateProject={updateProject}
-            onDeleteProject={deleteProject}
-            onReorderProjects={reorderProjects}
+            viewingMonth={viewingMonth} availableMonths={availableMonths} onMonthChange={setViewingMonth}
+            projects={projects.filter(p => !p.isFinished)} entries={entries} 
+            onAddEntry={addEntry} onUpdateEntry={updateEntry} onDeleteEntry={deleteEntry}
+            onUpdateProject={updateProject} onDeleteProject={deleteProject} onReorderProjects={reorderProjects}
           />
         )}
         {activeView === 'DASHBOARD' && (
-          <Dashboard 
-            projects={projects} 
-            entries={entries} 
-            inspirations={inspirations} 
-            viewingMonth={viewingMonth}
-            availableMonths={availableMonths}
-            onMonthChange={setViewingMonth}
-          />
+          <Dashboard projects={projects} entries={entries} inspirations={inspirations} viewingMonth={viewingMonth} availableMonths={availableMonths} onMonthChange={setViewingMonth} />
         )}
         {activeView === 'BRAINSTORM' && (
-          <Brainstorm 
-            projects={projects} 
-            inspirations={inspirations} 
-            onAddInspiration={addInspiration}
-            onUpdateInspiration={updateInspiration}
-            onDeleteInspiration={deleteInspiration}
-          />
+          <Brainstorm projects={projects} inspirations={inspirations} onAddInspiration={addInspiration} onUpdateInspiration={updateInspiration} onDeleteInspiration={deleteInspiration} />
         )}
 
-        {/* 懸浮按鈕僅在月度進度表（MATRIX）中顯示 */}
+        {/* 懸浮按鈕 */}
         {activeView === 'MATRIX' && (
-          <div className="absolute bottom-8 right-8 flex flex-col gap-4">
-            <button 
-              onClick={() => addNewProject()}
-              title="播下種子"
-              className="w-14 h-14 bg-[#D8E2DC] text-[#4A4A4A] rounded-full flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-all border border-[#B7C9BE]"
-            >
-              <FolderPlus size={26} />
-            </button>
-            <button 
-              onClick={() => {
-                setActiveView('BRAINSTORM');
-              }}
-              title="捕捉流光"
-              className="w-14 h-14 bg-[#4A4A4A] text-white rounded-full flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-all"
-            >
-              <Plus size={28} />
-            </button>
+          <div className="absolute bottom-10 right-10 flex flex-col gap-4">
+            <button onClick={addNewProject} className="w-14 h-14 bg-[#D8E2DC] text-[#4A4A4A] rounded-full flex items-center justify-center shadow-xl border border-[#B7C9BE]"><FolderPlus size={26}/></button>
+            <button onClick={() => setActiveView('BRAINSTORM')} className="w-14 h-14 bg-[#4A4A4A] text-white rounded-full flex items-center justify-center shadow-xl"><Plus size={28}/></button>
           </div>
         )}
       </main>
 
+      {/* 設置彈窗：集成備份功能 */}
       {isProjectSettingsOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/20 backdrop-blur-sm">
-          <div className="bg-white rounded-[2.5rem] p-8 w-[500px] shadow-2xl border border-[#EBE8E2] animate-in fade-in zoom-in duration-300">
+          <div className="bg-white rounded-[2.5rem] p-8 w-[450px] shadow-2xl animate-in fade-in zoom-in duration-300">
             <div className="flex justify-between items-center mb-6">
-              <div>
-                <h2 className="text-xl font-bold text-[#4A4A4A]">時光檔案</h2>
-                <p className="text-[10px] text-[#B7B7B7] uppercase tracking-wider font-bold">Data & Projects Management</p>
-              </div>
-              <button onClick={() => setIsProjectSettingsOpen(false)} className="text-[#B7B7B7] hover:text-[#4A4A4A] transition-colors"><X /></button>
+              <h2 className="text-xl font-bold text-[#4A4A4A]">時光檔案</h2>
+              <button onClick={() => setIsProjectSettingsOpen(false)} className="text-[#B7B7B7] hover:text-[#4A4A4A]"><X /></button>
             </div>
 
-            {/* 數據管理按鈕區 */}
             <div className="grid grid-cols-2 gap-3 mb-8">
-              <button 
-                onClick={exportData}
-                className="flex items-center justify-center gap-2 py-3.5 bg-[#F8F7F4] text-[#4A4A4A] rounded-2xl font-bold text-xs hover:bg-[#EBE8E2] transition-all border border-[#EBE8E2]"
-              >
-                <Download size={16} /> 備份至雲端 (JSON)
+              <button onClick={exportData} className="flex items-center justify-center gap-2 py-3 bg-[#F8F7F4] rounded-2xl font-bold text-sm border border-[#EBE8E2]">
+                <Download size={18}/> 導出備份
               </button>
-              <button 
-                onClick={handleImportClick}
-                className="flex items-center justify-center gap-2 py-3.5 bg-white text-[#4A4A4A] rounded-2xl font-bold text-xs hover:bg-[#F8F7F4] transition-all border border-[#EBE8E2]"
-              >
-                <Upload size={16} /> 恢復存檔 (JSON)
+              <button onClick={() => fileInputRef.current?.click()} className="flex items-center justify-center gap-2 py-3 bg-[#F8F7F4] rounded-2xl font-bold text-sm border border-[#EBE8E2]">
+                <Upload size={18}/> 導入備份
               </button>
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={importData} 
-                accept=".json" 
-                className="hidden" 
-              />
+              <input type="file" ref={fileInputRef} className="hidden" onChange={handleImport} accept=".json" />
             </div>
 
-            <div className="space-y-4 max-h-[45vh] overflow-y-auto pr-2 hide-scrollbar">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-[10px] font-bold text-[#B7B7B7] uppercase tracking-widest">所有項目</h3>
-                <span className="text-[9px] text-[#B7B7B7] font-medium">{projects.length} / 9 Slots</span>
-              </div>
-              
-              {projects.length === 0 && <p className="text-center py-10 text-[#B7B7B7] italic">尚無心向之所。</p>}
+            <div className="space-y-3 max-h-[40vh] overflow-y-auto hide-scrollbar">
+              <h3 className="text-[10px] font-bold text-[#B7B7B7] uppercase tracking-widest mb-2">已入夢項目 ({projects.filter(p=>p.isFinished).length})</h3>
               {projects.map(p => (
-                <div key={p.id} className={`flex gap-4 items-center p-4 rounded-2xl transition-all ${p.isFinished ? 'bg-[#F8F7F4] opacity-50' : 'bg-white border border-[#EBE8E2] shadow-sm'}`}>
-                  <div className={`w-3 h-3 rounded-full ${p.color}`}></div>
-                  <div className="flex-1">
-                    <p className={`font-bold text-sm ${p.isFinished ? 'line-through text-[#B7B7B7]' : 'text-[#4A4A4A]'}`}>{p.name}</p>
-                    <p className="text-[9px] text-[#B7B7B7] font-medium uppercase tracking-tighter">{p.isFinished ? '已入夢' : '行路中'}</p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button 
-                      onClick={() => updateProject(p.id, { isFinished: !p.isFinished })}
-                      className={`text-[9px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg border transition-all ${
-                        p.isFinished 
-                        ? 'border-[#B7C9BE] bg-[#D8E2DC] text-[#4A4A4A]' 
-                        : 'border-[#EBE8E2] text-[#B7B7B7] hover:border-[#4A4A4A] hover:text-[#4A4A4A]'
-                      }`}
-                    >
-                      {p.isFinished ? '喚醒' : '休眠'}
-                    </button>
-                    <button 
-                      onClick={() => deleteProject(p.id)}
-                      className="p-2 text-[#B7B7B7] hover:text-red-400 transition-colors"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+                <div key={p.id} className="flex items-center gap-4 p-4 bg-white border border-[#EBE8E2] rounded-2xl shadow-sm">
+                   <div className={`w-3 h-3 rounded-full ${p.color}`}></div>
+                   <div className="flex-1 font-bold text-sm">{p.name}</div>
+                   <button onClick={() => updateProject(p.id, { isFinished: !p.isFinished })} className="text-[10px] font-bold px-3 py-1.5 rounded-lg border border-[#EBE8E2]">
+                    {p.isFinished ? '喚醒' : '封印'}
+                   </button>
+                   <button onClick={() => deleteProject(p.id)} className="p-2 text-red-300 hover:text-red-500"><Trash2 size={16}/></button>
                 </div>
               ))}
             </div>
-
-            <button
-              onClick={() => setIsProjectSettingsOpen(false)}
-              className="w-full py-4 bg-[#4A4A4A] text-white rounded-2xl font-bold mt-8 shadow-lg shadow-[#4A4A4A]/20"
-            >
-              完成設定
-            </button>
           </div>
         </div>
       )}
@@ -378,19 +252,8 @@ const App: React.FC = () => {
   );
 };
 
-interface NavButtonProps {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-}
-
-const NavButton: React.FC<NavButtonProps> = ({ active, onClick, icon }) => (
-  <button 
-    onClick={onClick}
-    className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
-      active ? 'bg-[#F8F7F4] text-[#4A4A4A]' : 'text-[#B7B7B7] hover:bg-[#F8F7F4]'
-    }`}
-  >
+const NavButton = ({ active, onClick, icon }: { active: boolean, onClick: () => void, icon: any }) => (
+  <button onClick={onClick} className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${active ? 'bg-[#F8F7F4] text-[#4A4A4A] shadow-inner' : 'text-[#B7B7B7] hover:bg-[#F8F7F4]'}`}>
     {icon}
   </button>
 );
